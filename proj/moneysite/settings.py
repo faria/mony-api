@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     'oauth2_provider',
     'rest_framework',
     'storages',
+    'bank'
 ]
 
 # Session
