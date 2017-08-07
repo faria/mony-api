@@ -11,9 +11,22 @@ https://docs.djangoproject.com/en/1.11/ref/settings/
 """
 
 import os
+import logging
+from django.core.exceptions import ImproperlyConfigured
+
+ENV_DEV = 'dev'
+ENV_STAGE = 'stage'
+ENV_PROD = 'prod'
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+def get_environment_variable(var_name):
+    """Attempt to get key from os.environ, or raise ImproperlyConfigured exception"""
+    try:
+        return os.environ[var_name]
+    except KeyError:
+        raise ImproperlyConfigured('The {0} environment variable is not set'.format(var_name))
 
 
 # Quick-start development settings - unsuitable for production
@@ -22,13 +35,29 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = '9v46r^njyii^igsm7bb*khs2fzs6hxf%1w-ht9b=tg!15*)58h'
 
+ENV_TYPE = get_environment_variable('MONEY_ENV_TYPE')
+if not ENV_TYPE in (ENV_DEV, ENV_PROD, ENV_STAGE):
+    raise ImproperlyConfigured('Invalid value for MONEY_ENV_TYPE.')
+
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = True if ENV_TYPE == ENV_DEV else False
 
-ALLOWED_HOSTS = []
 
+SERVER_IP = os.environ.get('MONEY_SERVER_IP_ADDR', '')
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '[::1]',]
+if SERVER_IP:
+    ALLOWED_HOSTS.append(SERVER_IP)
+
+
+ADMINS = [
+    ('Faria Chowdhury',     'faria.chowdhury@gmail.com'),
+    ('Luis Armendariz',     'luis.armendariz@gmail.com'),
+]
 
 # Application definition
+
+# This value used by various expiration-related settings
+APP_EXPIRE_SECONDS = 86400*60  # 60 days
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -37,7 +66,32 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'oauth2_provider',
+    'rest_framework',
+    'storages',
 ]
+
+# Session
+SESSION_COOKIE_AGE = APP_EXPIRE_SECONDS
+#
+# DRF
+#
+REST_FRAMEWORK = {
+    'DEFAULT_PERMISSION_CLASSES': ('rest_framework.permissions.IsAuthenticated',),
+    'PAGE_SIZE': 100,
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        # OAuth
+        'oauth2_provider.ext.rest_framework.OAuth2Authentication',
+    )
+}
+
+# OAuth
+OAUTH2_PROVIDER = {
+    'ACCESS_TOKEN_EXPIRE_SECONDS': APP_EXPIRE_SECONDS,
+    # this is the list of available scopes
+    'SCOPES': {'read': 'Read scope', 'write': 'Write scope', 'groups': 'Access to your groups'}
+}
+
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -75,8 +129,11 @@ WSGI_APPLICATION = 'moneysite.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME':     get_environment_variable('MONEY_DB_NAME'),
+        'USER':     get_environment_variable('MONEY_DB_USER'),
+        'PASSWORD': get_environment_variable('MONEY_DB_PASSWORD'),
+        'HOST':     get_environment_variable('MONEY_DB_HOST')
     }
 }
 
@@ -105,9 +162,9 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'America/Los_Angeles'
 
-USE_I18N = True
+USE_I18N = False
 
 USE_L10N = True
 
@@ -118,3 +175,100 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/1.11/howto/static-files/
 
 STATIC_URL = '/static/'
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, 'static'),
+]
+STATIC_ROOT = os.path.join(BASE_DIR, 'collected_static')
+
+#
+# logging configuration.
+#
+LOG_DIR = os.path.join(BASE_DIR, 'logs')
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'simple': {
+            '()': 'django.utils.log.ServerFormatter',
+            'format': '[%(server_time)s] %(levelname)-8s : %(message)s',
+        },
+        'verbose': {
+            '()': 'django.utils.log.ServerFormatter',
+            'format': '[%(server_time)s] %(levelname)-8s %(name)-15s %(lineno)-6s: %(message)s',
+        },
+    },
+    'filters': {
+        'require_debug_false': {
+            '()': 'django.utils.log.RequireDebugFalse'
+        },
+        'require_debug_true': {
+            '()': 'django.utils.log.RequireDebugTrue'
+        },
+    },
+    'handlers': {
+        'null': {
+            'level': 'DEBUG',
+            'class': 'logging.NullHandler'
+        },
+        'console': {
+            'class': 'logging.StreamHandler',
+            'filters': ['require_debug_true'],
+            'formatter': 'simple',
+        },
+        'mail_admins': {
+            'level': 'ERROR',
+            'filters': ['require_debug_false'],
+            'class': 'django.utils.log.AdminEmailHandler'
+        },
+        'gen_rotfile': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'formatter': 'verbose',
+            'filename': os.path.join(LOG_DIR, 'general.log'),
+            'maxBytes': 2**18,
+            'backupCount':5
+        },
+        'req_rotfile': {
+            'level': 'DEBUG',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'formatter': 'verbose',
+            'filename': os.path.join(LOG_DIR, 'requests.log'),
+            'maxBytes': 2**18,
+            'backupCount':5
+        },
+        'mgmt_rotfile': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'formatter': 'verbose',
+            'filename': os.path.join(LOG_DIR, 'mgmt.log'),
+            'maxBytes': 2**18,
+            'backupCount':3
+        },
+    },
+    'loggers': {
+        'django.security.DisallowedHost': {
+            'handlers': ['null',], # do not send email about Invalid HTTP_HOST header error
+            'propagate': False,
+        },
+        'django.request': {
+            'handlers': ['mail_admins'],
+            'level': 'ERROR',
+            'propagate': True,
+        },
+        'api': {
+            'handlers': ['req_rotfile', 'mail_admins',],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+        'gen': {
+            'handlers': ['gen_rotfile', 'mail_admins',],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+        'mgmt': {
+            'handlers': ['mgmt_rotfile', 'mail_admins',],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+    }
+}
