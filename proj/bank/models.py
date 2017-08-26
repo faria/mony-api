@@ -12,6 +12,8 @@ from django.utils import timezone
 logger = logging.getLogger('gen.models')
 
 TAX_ADJUSTED_PCT = 0.7
+ADMIN_USER= 'admin'
+
 
 class Source(models.Model):
     name = models.CharField(max_length=100, unique=True)
@@ -45,11 +47,11 @@ class Income(models.Model):
     modified = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return '{0.source}/{0.date_paid:%Y-%m-%d}'.format(self)
+        return '{0.user}|{0.source}|{1}'.format(self, timezone.localtime(self.date_paid))
 
     def adjustedAmount(self):
         if self.is_pre_tax:
-            return self.amount * TAX_ADJUSTED_PCT
+            return self.amount * Decimal(str(TAX_ADJUSTED_PCT))
         return self.amount
     adjustedAmount.short_description='AdjustedAmount'
 
@@ -146,13 +148,6 @@ class Seller(models.Model):
         related_name='sellers',
         help_text='Automatic tags to apply to an expense'
     )
-    pref_account = models.ManyToManyField(
-        Account,
-        blank=True,
-        through='PreferredAccount',
-        related_name='sellers',
-        help_text='Preferred payment methods'
-    )
     created = models.DateTimeField(auto_now_add=True)
     modified = models.DateTimeField(auto_now=True)
 
@@ -174,7 +169,7 @@ class PreferredAccount(models.Model):
     user = models.ForeignKey(User, db_index=True, on_delete=models.CASCADE)
 
     def __str__(self):
-        return '{0.user}/{0.seller}/{0.account.acct_name}'.format(self)
+        return '{0.user}|{0.account.acct_name}|{0.paytype}|{0.seller}'.format(self)
 
     class Meta:
         unique_together = ('account', 'seller', 'user')
@@ -224,6 +219,7 @@ class Order(models.Model):
     order_date = models.DateTimeField()
     amount = models.DecimalField(max_digits=7, decimal_places=2)
     is_complete = models.BooleanField(default=False)
+    is_cancelled = models.BooleanField(default=False)
     num_shipments = models.PositiveSmallIntegerField(default=1, blank=True)
     memo = models.TextField(blank=True, default='')
     created = models.DateTimeField(auto_now_add=True)
@@ -306,6 +302,7 @@ class ExpenseManager(models.Manager):
                 created_by=created_by
             )
             if order.expenses.all().count() == order.num_shipments:
+                print('completeShipment: order is complete')
                 order.is_complete = True
                 order.save()
         return expense
@@ -352,13 +349,16 @@ class Expense(models.Model):
             help_text='Check number if paid via personal check.')
     shipment_no = models.PositiveSmallIntegerField(null=True, blank=True, default=None,
             help_text='Shipment number if order has multiple shipments.')
+    invoiceid = models.CharField(max_length=32, blank=True, default='',
+            help_text='Used to track OrderId for expenses without creating an order')
     created_by = models.CharField(max_length=20)
     created = models.DateTimeField(auto_now_add=True)
     modified = models.DateTimeField(auto_now=True)
     objects = ExpenseManager()
 
     def __str__(self):
-        return '{0.location}/{0.date_paid:%Y-%m-%d}'.format(self)
+        #return '{0.location}/{0.date_paid:%Y-%m-%d}'.format(self)
+        return "{0.location}|{0.account}|{0.paytype}|{0.date_paid:%Y-%m-%d}|${0.amount}|{0.memo}".format(self)
 
     def isOrder(self):
         return self.order is not None
@@ -388,7 +388,7 @@ class ExpenseCategoryManager(models.Manager):
         for d in data:
             catg = d['category']
             weight = d['weight']
-            ec = self.model.objects.create(expense=expense, category=category, weight=weight)
+            ec = self.model.objects.create(expense=expense, category=catg, weight=weight)
 
 
 class ExpenseCategory(models.Model):

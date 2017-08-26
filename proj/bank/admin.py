@@ -59,7 +59,7 @@ class TagAdmin(admin.ModelAdmin):
 
 
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ('id','location','order_date', 'order_number', 'account','paytype', 'amount', 'is_complete', 'num_shipments', 'memo')
+    list_display = ('id','location','order_date', 'order_number', 'account','paytype', 'amount', 'is_complete', 'memo')
     list_filter = ('is_complete', 'account')
     list_select_related = True
     search_fields = ('=order_number', 'memo')
@@ -70,7 +70,7 @@ class ExpenseCatgInline(admin.TabularInline):
     model = ExpenseCategory
 
 class ExpenseAdmin(admin.ModelAdmin):
-    list_display = ('id','location','date_paid','account','paytype','amount','isOrder','memo')
+    list_display = ('id','location','date_paid','account','paytype','amount','memo')
     list_filter = ('account','paytype')
     filter_horizontal = ('tags',)
     search_fields = ('memo',)
