@@ -398,6 +398,15 @@ class CreateExpenseFromOrderShipment(generics.CreateAPIView):
         return Response(out_serializer.data, status=status.HTTP_201_CREATED)
 
 
+class ExpenseCatgFilter(filters.FilterSet):
+    class Meta:
+        model = ExpenseCategory
+        fields = (
+            'expense',
+            'category',
+        )
+        strict = django_filters.STRICTNESS.RETURN_NO_RESULTS
+
 class ExpenseCatgList(generics.ListCreateAPIView):
     queryset = ExpenseCategory.objects.all().order_by('id')
     serializer_class = ExpenseCatgSerializer
@@ -406,5 +415,3 @@ class ExpenseCatgList(generics.ListCreateAPIView):
 class ExpenseCatgDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset = ExpenseCategory.objects.all()
     serializer_class = ExpenseCatgSerializer
-
-
